@@ -72,7 +72,8 @@ class DatabaseService {
 
   Future<List<Map<String, dynamic>>> getEssais() async {
     final dbClient = await db;
-    return await dbClient.query('essais');
+    return await dbClient.query('essais',
+        orderBy: 'nom COLLATE NOCASE ASC',);
   }
 
   Future<int> insertNotationType(String nom) async {
@@ -164,6 +165,16 @@ class DatabaseService {
     );
   }
 
+  Future<bool> essaiADesNotations(int essaiId) async {
+    final dbClient = await db;
+    final result = await dbClient.rawQuery(
+      'SELECT COUNT(*) as total FROM notes WHERE essai_id = ? AND note IS NOT NULL',
+      [essaiId],
+    );
+    final count = Sqflite.firstIntValue(result) ?? 0;
+    return count > 0;
+  }
+
   Future<void> exportNotesOfEssai(int essaiId, String essaiNom, String typeNotation) async {
     final dbClient = await db;
     final essais = await getEssais();
@@ -214,9 +225,18 @@ class DatabaseService {
       for (final type in types) {
         final notationId = type['id'];
         final nomType = type['nom'];
-        await exportType(nomType, notationId);
+
+        final countResult = await dbClient.rawQuery(
+          'SELECT COUNT(*) as total FROM notes WHERE essai_id = ? AND notation_id = ? AND note IS NOT NULL',
+          [essaiId, notationId],
+        );
+        final count = Sqflite.firstIntValue(countResult) ?? 0;
+
+        if (count > 0) {
+          await exportType(nomType, notationId);
+        }
       }
-    } else {
+    }else {
       final type = await dbClient.query(
         'notations',
         where: 'nom = ?',

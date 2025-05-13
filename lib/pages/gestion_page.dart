@@ -215,194 +215,217 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final essais = snapshot.data as List<Map<String, dynamic>>;
-        return ListView(
-          children: [
-            for (final essai in essais)
-              ListTile(
-                title: Text(essai['nom']),
-                subtitle: Text("${essai['nb_parcelles']} parcelles - ${essai['nb_lignes']} lignes"),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (value) async {
-                    if (value == 'edit') {
-                      _showEssaiForm(essai: essai);
-                    } else if (value == 'delete') {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Confirmation'),
-                          content: Text("Supprimer l'essai \"${essai['nom']}\" ?"),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer')),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        await db.deleteEssai(essai['id']);
-                        setState(() {});
-                      }
-                    } else if (value == 'export') {
-                      final allTypes = await db.getNotationTypes();
-                      final filteredTypes = <Map<String, dynamic>>[];
 
-                      for (final type in allTypes) {
-                        final notes = await db.getNotes(essai['id'], type['id']);
-                        if (notes.any((n) => n['note'] != null)) {
-                          filteredTypes.add(type);
-                        }
-                      }
+        return FutureBuilder(
+          future: Future.wait(
+            essais.map((e) async {
+              final hasNotes = await db.essaiADesNotations(e['id']);
+              return {...e, 'hasNotes': hasNotes};
+            }),
+          ),
+          builder: (context, notesSnapshot) {
+            if (!notesSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+            final essaisAvecNotes = notesSnapshot.data as List<Map<String, dynamic>>;
+            essaisAvecNotes.sort((a, b) {
+              if (a['hasNotes'] == b['hasNotes']) {
+                return (a['nom'] as String).compareTo(b['nom'] as String);
+              }
+              return b['hasNotes'] ? 1 : -1;
+            });
 
-                      if (!context.mounted) return;
 
-                      if (filteredTypes.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Aucune notation enregistrée pour \"${essai['nom']}\".")),
-                        );
-                        return;
-                      }
+            return ListView(
+              children: [
+                for (final essai in essaisAvecNotes)
+                  Container(
+                    color: essai['hasNotes'] ? Colors.green[100] : null,
+                    child: ListTile(
+                      title: Text(essai['nom']),
+                      subtitle: Text("${essai['nb_parcelles']} parcelles - ${essai['nb_lignes']} lignes"),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          if (value == 'edit') {
+                            _showEssaiForm(essai: essai);
+                          } else if (value == 'delete') {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Confirmation'),
+                                content: Text("Supprimer l'essai \"${essai['nom']}\" ?"),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await db.deleteEssai(essai['id']);
+                              setState(() {});
+                            }
+                          } else if (value == 'export') {
+                            final allTypes = await db.getNotationTypes();
+                            final filteredTypes = <Map<String, dynamic>>[];
 
-                      final selected = await showDialog<String>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text("Sélectionner un type de notation"),
-                          content: SizedBox(
-                            width: double.maxFinite,
-                            child: ListView(
-                              shrinkWrap: true,
-                              children: [
-                                ListTile(
-                                  title: const Text("Tous les types"),
-                                  leading: const Icon(Icons.select_all),
-                                  onTap: () => Navigator.pop(context, '__TOUS__'),
+                            for (final type in allTypes) {
+                              final notes = await db.getNotes(essai['id'], type['id']);
+                              if (notes.any((n) => n['note'] != null)) {
+                                filteredTypes.add(type);
+                              }
+                            }
+
+                            if (!context.mounted) return;
+
+                            if (filteredTypes.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Aucune notation enregistrée pour \"${essai['nom']}\".")),
+                              );
+                              return;
+                            }
+
+                            final selected = await showDialog<String>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text("Sélectionner un type de notation"),
+                                content: SizedBox(
+                                  width: double.maxFinite,
+                                  child: ListView(
+                                    shrinkWrap: true,
+                                    children: [
+                                      ListTile(
+                                        title: const Text("Tous les types"),
+                                        leading: const Icon(Icons.select_all),
+                                        onTap: () => Navigator.pop(context, '__TOUS__'),
+                                      ),
+                                      ...filteredTypes.map((n) {
+                                        return ListTile(
+                                          title: Text(n['nom']),
+                                          onTap: () => Navigator.pop(context, n['nom']),
+                                        );
+                                      }),
+                                    ],
+                                  ),
                                 ),
-                                ...filteredTypes.map((n) {
-                                  return ListTile(
-                                    title: Text(n['nom']),
-                                    onTap: () => Navigator.pop(context, n['nom']),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
+                              ),
+                            );
 
-                      if (selected != null) {
-                        await db.exportNotesOfEssai(essai['id'], essai['nom'], selected);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(selected == '__TOUS__'
-                                  ? "Export CSV de tous les types pour \"${essai['nom']}\" terminé."
-                                  : "Export CSV de \"${essai['nom']}\" ($selected) terminé."),
-                            ),
-                          );
-                        }
-                      }
-                    } else if (value == 'clear') {
-                      final allTypes = await db.getNotationTypes();
-                      final filteredTypes = <Map<String, dynamic>>[];
+                            if (selected != null) {
+                              await db.exportNotesOfEssai(essai['id'], essai['nom'], selected);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(selected == '__TOUS__'
+                                        ? "Export CSV de tous les types pour \"${essai['nom']}\" terminé."
+                                        : "Export CSV de \"${essai['nom']}\" ($selected) terminé."),
+                                  ),
+                                );
+                              }
+                            }
+                          } else if (value == 'clear') {
+                            final allTypes = await db.getNotationTypes();
+                            final filteredTypes = <Map<String, dynamic>>[];
 
-                      for (final type in allTypes) {
-                        final notes = await db.getNotes(essai['id'], type['id']);
-                        if (notes.any((n) => n['note'] != null)) {
-                          filteredTypes.add(type);
-                        }
-                      }
+                            for (final type in allTypes) {
+                              final notes = await db.getNotes(essai['id'], type['id']);
+                              if (notes.any((n) => n['note'] != null)) {
+                                filteredTypes.add(type);
+                              }
+                            }
 
-                      if (!context.mounted) return;
+                            if (!context.mounted) return;
 
-                      if (filteredTypes.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Aucune notation enregistrée pour \"${essai['nom']}\".")),
-                        );
-                        return;
-                      }
+                            if (filteredTypes.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Aucune notation enregistrée pour \"${essai['nom']}\".")),
+                              );
+                              return;
+                            }
 
-                      final selected = await showDialog<String>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text("Réinitialiser les notations"),
-                          content: SizedBox(
-                            width: double.maxFinite,
-                            child: ListView(
-                              shrinkWrap: true,
-                              children: [
-                                ListTile(
-                                  title: const Text("Tous les types"),
-                                  leading: const Icon(Icons.delete_forever),
-                                  onTap: () => Navigator.pop(context, '__TOUS__'),
+                            final selected = await showDialog<String>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text("Réinitialiser les notations"),
+                                content: SizedBox(
+                                  width: double.maxFinite,
+                                  child: ListView(
+                                    shrinkWrap: true,
+                                    children: [
+                                      ListTile(
+                                        title: const Text("Tous les types"),
+                                        leading: const Icon(Icons.delete_forever),
+                                        onTap: () => Navigator.pop(context, '__TOUS__'),
+                                      ),
+                                      ...filteredTypes.map((n) {
+                                        return ListTile(
+                                          title: Text(n['nom']),
+                                          onTap: () => Navigator.pop(context, n['id'].toString()),
+                                        );
+                                      }),
+                                    ],
+                                  ),
                                 ),
-                                ...filteredTypes.map((n) {
-                                  return ListTile(
-                                    title: Text(n['nom']),
-                                    onTap: () => Navigator.pop(context, n['id'].toString()),
+                              ),
+                            );
+
+                            if (selected != null) {
+                              String message;
+                              if (selected == '__TOUS__') {
+                                message = "Réinitialiser *toutes* les notations de \"${essai['nom']}\" ?";
+                              } else {
+                                final typeId = int.tryParse(selected);
+                                final allTypes = await db.getNotationTypes();
+                                final selectedType = allTypes.firstWhere((t) => t['id'] == typeId);
+                                final typeNom = selectedType['nom'];
+                                message = "Réinitialiser la notation \"$typeNom\" de \"${essai['nom']}\" ?";
+                              }
+
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text("Confirmation"),
+                                  content: Text(message),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Annuler")),
+                                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirmer")),
+                                  ],
+                                ),
+                              );
+
+                              if (confirm == true) {
+                                if (selected == '__TOUS__') {
+                                  await db.clearNotesOfEssai(essai['id']);
+                                } else {
+                                  final typeId = int.tryParse(selected);
+                                  if (typeId != null) {
+                                    await db.clearNotesOfEssaiForType(essai['id'], typeId);
+                                  }
+                                }
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text("Notations de \"${essai['nom']}\" réinitialisées.")),
                                   );
-                                }),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-
-                      if (selected != null) {
-                        String message;
-                        if (selected == '__TOUS__') {
-                          message = "Réinitialiser *toutes* les notations de \"${essai['nom']}\" ?";
-                        } else {
-                          final typeId = int.tryParse(selected);
-                          final allTypes = await db.getNotationTypes();
-                          final selectedType = allTypes.firstWhere((t) => t['id'] == typeId);
-                          final typeNom = selectedType['nom'];
-                          message = "Réinitialiser la notation \"$typeNom\" de \"${essai['nom']}\" ?";
-                        }
-
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: const Text("Confirmation"),
-                            content: Text(message),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Annuler")),
-                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirmer")),
-                            ],
-                          ),
-                        );
-
-                        if (confirm == true) {
-                          if (selected == '__TOUS__') {
-                            await db.clearNotesOfEssai(essai['id']);
-                          } else {
-                            final typeId = int.tryParse(selected);
-                            if (typeId != null) {
-                              await db.clearNotesOfEssaiForType(essai['id'], typeId);
+                                }
+                              }
                             }
                           }
-
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text("Notations de \"${essai['nom']}\" réinitialisées.")),
-                            );
-                          }
-                        }
-                      }
-                    }
-
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'edit', child: Text("Modifier")),
-                    const PopupMenuItem(value: 'delete', child: Text("Supprimer")),
-                    const PopupMenuItem(value: 'export', child: Text("Exporter CSV")),
-                    const PopupMenuItem(value: 'clear', child: Text("Réinitialiser notations")),
-                  ],
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(value: 'edit', child: Text("Modifier")),
+                          const PopupMenuItem(value: 'delete', child: Text("Supprimer")),
+                          const PopupMenuItem(value: 'export', child: Text("Exporter CSV")),
+                          const PopupMenuItem(value: 'clear', child: Text("Réinitialiser notations")),
+                        ],
+                      ),
+                    ),
+                  ),
+                TextButton.icon(
+                  onPressed: () => _showEssaiForm(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Ajouter un essai'),
                 ),
-              ),
-            TextButton.icon(
-              onPressed: () => _showEssaiForm(),
-              icon: const Icon(Icons.add),
-              label: const Text('Ajouter un essai'),
-            ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
