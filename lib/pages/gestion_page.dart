@@ -60,7 +60,7 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
                 TextField(
                   controller: dateSemisCtrl,
                   decoration: const InputDecoration(labelText: 'Date de semis (JJ/MM/AAAA)'),
-                  keyboardType: TextInputType.datetime,
+                    keyboardType: TextInputType.visiblePassword,
                 ),
                 if (errorMessage != null) ...[
                   const SizedBox(height: 10),
