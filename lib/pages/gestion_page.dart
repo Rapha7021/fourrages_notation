@@ -236,6 +236,37 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
 
             return ListView(
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8),
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.delete_forever),
+                    label: const Text("Réinitialiser toutes les notations"),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text("Confirmation"),
+                          content: const Text("Cela supprimera toutes les notations de tous les essais. Continuer ?"),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Annuler")),
+                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirmer")),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        await db.clearAllNotes(); // méthode à ajouter dans DatabaseService
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Toutes les notations ont été réinitialisées.")),
+                          );
+                          setState(() {}); // met à jour l'affichage
+                        }
+                      }
+                    },
+                  ),
+                ),
                 for (final essai in essaisAvecNotes)
                   Container(
                     color: essai['hasNotes'] ? Colors.green[100] : null,
@@ -393,10 +424,12 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
                               if (confirm == true) {
                                 if (selected == '__TOUS__') {
                                   await db.clearNotesOfEssai(essai['id']);
+                                  setState(() {});
                                 } else {
                                   final typeId = int.tryParse(selected);
                                   if (typeId != null) {
                                     await db.clearNotesOfEssaiForType(essai['id'], typeId);
+                                    setState(() {});
                                   }
                                 }
 

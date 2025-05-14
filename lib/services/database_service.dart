@@ -250,6 +250,14 @@ class DatabaseService {
     }
   }
 
+  Future<void> clearAllNotes() async {
+    final dbClient = await db;
+    await dbClient.update(
+      'notes',
+      {'note': null},
+      where: 'note IS NOT NULL',
+    );
+  }
 
 
   Future<List<FileSystemEntity>> listExportedCsvFiles() async {
