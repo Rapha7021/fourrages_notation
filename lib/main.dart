@@ -204,13 +204,14 @@ class NotationPage extends StatefulWidget {
 class _NotationPageState extends State<NotationPage> {
   final db = DatabaseService();
   final Map<int, double> notes = {};
-  final Map<int, GlobalKey> parcelleKeys = {}; // 👈 Clés pour le scroll auto
+  final Map<int, GlobalKey> parcelleKeys = {};
 
   int get nbParcelles => widget.essai['nb_parcelles'];
   int get nbLignes => widget.essai['nb_lignes'];
   int get nbColonnes => (nbParcelles / nbLignes).ceil();
 
   List<int> parcours = [];
+  List<int> indexVersParcelleIndex = []; // 👈 nouvel ordre réel
   int currentIndex = 0;
 
   @override
@@ -238,23 +239,35 @@ class _NotationPageState extends State<NotationPage> {
 
   List<int> _generateSerpentinParcours() {
     List<int> ordre = [];
+    indexVersParcelleIndex.clear();
+
     for (int row = 0; row < nbLignes; row++) {
       List<int> ligne = [];
       for (int col = 0; col < nbColonnes; col++) {
         int index = col * nbLignes + row;
-        if (index < nbParcelles) ligne.add(index);
+        if (index < nbParcelles) {
+          ligne.add(index);
+        }
       }
       if (row % 2 == 1) {
         ligne = ligne.reversed.toList();
       }
       ordre.addAll(ligne);
     }
+
+    // Lier chaque position de parcours à son vrai index dans la base
+    indexVersParcelleIndex = ordre.toList();
+
     return ordre;
   }
 
   void enterNote(double value) async {
     setState(() => notes[currentIndex] = value);
-    await db.insertNote(widget.essai['id'], widget.notation['id'], currentIndex, value);
+
+    final parcoursPosition = parcours.indexOf(currentIndex);
+    final parcelleIndex = indexVersParcelleIndex[parcoursPosition];
+
+    await db.insertNote(widget.essai['id'], widget.notation['id'], parcelleIndex, value);
     avancer();
   }
 
@@ -264,7 +277,6 @@ class _NotationPageState extends State<NotationPage> {
       final nextIndex = parcours[idx + 1];
       setState(() => currentIndex = nextIndex);
 
-      // 🔁 Scroll automatique
       Future.delayed(const Duration(milliseconds: 50), () {
         final key = parcelleKeys[nextIndex];
         if (key != null && key.currentContext != null) {
@@ -277,7 +289,6 @@ class _NotationPageState extends State<NotationPage> {
       });
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +355,7 @@ class _NotationPageState extends State<NotationPage> {
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 11, // 🧾 Taille réduite
+                                      fontSize: 11,
                                     ),
                                   ),
                                 ),
@@ -364,7 +375,6 @@ class _NotationPageState extends State<NotationPage> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-              // 🔒 Hauteur fixe pour le pavé numérique
               SizedBox(
                 height: 330,
                 child: NumericPad(
@@ -380,6 +390,7 @@ class _NotationPageState extends State<NotationPage> {
     );
   }
 }
+
 
 class NumericPad extends StatefulWidget {
   final Function(double) onValueEntered;

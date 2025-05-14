@@ -120,6 +120,28 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
     );
   }
 
+  Future<void> exporterToutesLesNotations() async {
+    final essais = await db.getEssais();
+    final allTypes = await db.getNotationTypes();
+    int totalExports = 0;
+
+    for (final essai in essais) {
+      for (final type in allTypes) {
+        final notes = await db.getNotes(essai['id'], type['id']);
+        if (notes.any((n) => n['note'] != null)) {
+          await db.exportNotesOfEssai(essai['id'], essai['nom'], type['nom']);
+          totalExports++;
+        }
+      }
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Export terminé : $totalExports fichier(s) CSV généré(s).")),
+      );
+    }
+  }
+
   Future<void> exportDatabase() async {
     try {
       final dbPath = await db.getDatabasePath();
@@ -238,33 +260,48 @@ class _GestionPageState extends State<GestionPage> with SingleTickerProviderStat
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.delete_forever),
-                    label: const Text("Réinitialiser toutes les notations"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text("Confirmation"),
-                          content: const Text("Cela supprimera toutes les notations de tous les essais. Continuer ?"),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Annuler")),
-                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirmer")),
-                          ],
-                        ),
-                      );
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.delete_forever),
+                          label: const Text("Réinitialiser"),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text("Confirmation"),
+                                content: const Text("Cela supprimera toutes les notations de tous les essais. Continuer ?"),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Annuler")),
+                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirmer")),
+                                ],
+                              ),
+                            );
 
-                      if (confirm == true) {
-                        await db.clearAllNotes(); // méthode à ajouter dans DatabaseService
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Toutes les notations ont été réinitialisées.")),
-                          );
-                          setState(() {}); // met à jour l'affichage
-                        }
-                      }
-                    },
+                            if (confirm == true) {
+                              await db.clearAllNotes();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Toutes les notations ont été réinitialisées.")),
+                                );
+                                setState(() {});
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.file_download),
+                          label: const Text("Exporter tout"),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+                          onPressed: exporterToutesLesNotations,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 for (final essai in essaisAvecNotes)
