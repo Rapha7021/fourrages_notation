@@ -209,9 +209,23 @@ class _NotationPageState extends State<NotationPage> {
   int get nbParcelles => widget.essai['nb_parcelles'];
   int get nbLignes => widget.essai['nb_lignes'];
   int get nbColonnes => (nbParcelles / nbLignes).ceil();
+  int findCurrentIndexFromParcelleIndex(int parcelleIndex) {
+    final targetId = parcelleIndex + 10;
+
+    for (int col = 0; col < nbColonnes; col++) {
+      for (int row = 0; row < nbLignes; row++) {
+        if (col * nbLignes + row >= nbParcelles) continue;
+
+        final id = getParcelleId(col, row);
+        if (id == targetId) {
+          return col * nbLignes + row;
+        }
+      }
+    }
+    return -1; // non trouvé
+  }
 
   List<int> parcours = [];
-  List<int> indexVersParcelleIndex = []; // 👈 nouvel ordre réel
   int currentIndex = 0;
 
   @override
@@ -225,10 +239,15 @@ class _NotationPageState extends State<NotationPage> {
   Future<void> loadNotes() async {
     final rawNotes = await db.getNotes(widget.essai['id'], widget.notation['id']);
     for (final row in rawNotes) {
-      notes[row['parcelle_index']] = row['note'];
+      final parcelleIndex = row['parcelle_index'] as int;
+      final currentIndex = findCurrentIndexFromParcelleIndex(parcelleIndex);
+      if (currentIndex != -1) {
+        notes[currentIndex] = row['note'];
+      }
     }
     setState(() {});
   }
+
 
   int getParcelleId(int col, int row) {
     bool isColImpair = col % 2 == 1;
@@ -239,8 +258,6 @@ class _NotationPageState extends State<NotationPage> {
 
   List<int> _generateSerpentinParcours() {
     List<int> ordre = [];
-    indexVersParcelleIndex.clear();
-
     for (int row = 0; row < nbLignes; row++) {
       List<int> ligne = [];
       for (int col = 0; col < nbColonnes; col++) {
@@ -255,21 +272,21 @@ class _NotationPageState extends State<NotationPage> {
       ordre.addAll(ligne);
     }
 
-    // Lier chaque position de parcours à son vrai index dans la base
-    indexVersParcelleIndex = ordre.toList();
-
     return ordre;
   }
 
   void enterNote(double value) async {
-    setState(() => notes[currentIndex] = value);
+    final col = currentIndex ~/ nbLignes;
+    final row = currentIndex % nbLignes;
+    final parcelleIndex = getParcelleId(col, row) - 10;
 
-    final parcoursPosition = parcours.indexOf(currentIndex);
-    final parcelleIndex = indexVersParcelleIndex[parcoursPosition];
+    setState(() => notes[currentIndex] = value);
 
     await db.insertNote(widget.essai['id'], widget.notation['id'], parcelleIndex, value);
     avancer();
   }
+
+
 
   void avancer() {
     final idx = parcours.indexOf(currentIndex);
@@ -428,18 +445,30 @@ class _NumericPadState extends State<NumericPad> {
 
   void clearInput() async {
     vibrate(duration: 50); // vibration moyenne
-    setState(() => input = "");
+
+    final state = context.findAncestorStateOfType<_NotationPageState>()!;
+    final essai = state.widget.essai;
+    final notation = state.widget.notation;
+    final currentIndex = state.currentIndex;
+
+    // 🔧 Calcul du vrai parcelleIndex à partir du currentIndex
+    final col = currentIndex ~/ state.nbLignes;
+    final row = currentIndex % state.nbLignes;
+    final parcelleIndex = state.getParcelleId(col, row) - 10;
+
     await DatabaseService().deleteNote(
-      (context.findAncestorStateOfType<_NotationPageState>()!).widget.essai['id'],
-      (context.findAncestorStateOfType<_NotationPageState>()!).widget.notation['id'],
-      (context.findAncestorStateOfType<_NotationPageState>()!).currentIndex,
+      essai['id'],
+      notation['id'],
+      parcelleIndex,
     );
-    setState(() {
-      (context.findAncestorStateOfType<_NotationPageState>()!).notes.remove(
-        (context.findAncestorStateOfType<_NotationPageState>()!).currentIndex,
-      );
+
+    state.setState(() {
+      state.notes.remove(currentIndex); // Ici on retire l'affichage (pas parcelleIndex)
     });
+
+    setState(() => input = "");
   }
+
 
   void validate() {
     vibrate(duration: 100); // vibration forte
